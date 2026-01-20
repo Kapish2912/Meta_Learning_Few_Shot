@@ -1,0 +1,15 @@
+# Data & outputs
+data/
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
