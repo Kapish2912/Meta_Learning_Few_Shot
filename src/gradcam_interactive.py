@@ -65,9 +65,16 @@ compare_runnerup = st.sidebar.checkbox(
 
 cam_alpha = st.sidebar.slider(
     "Heatmap Strength",
-    min_value=0.1,
-    max_value=1.0,
-    value=0.4,
+    0.1,
+    1.0,
+    0.4,
+)
+
+confidence_threshold = st.sidebar.slider(
+    "Confidence Threshold",
+    0.3,
+    0.9,
+    0.6,
 )
 
 colormap_name = st.sidebar.selectbox(
@@ -124,6 +131,15 @@ if file is not None:
     )
 
     # ------------------------------------------------------
+    # CONFIDENCE SAFETY CHECK
+    # ------------------------------------------------------
+    if probs[top1] < confidence_threshold:
+        st.error(
+            "⚠️ Prediction confidence below threshold. "
+            "Expert review is recommended."
+        )
+
+    # ------------------------------------------------------
     # CONFIDENCE DISTRIBUTION
     # ------------------------------------------------------
     st.subheader("Prediction Confidence Distribution")
@@ -147,18 +163,18 @@ if file is not None:
             target_layer,
         )
 
-        cam1 = cv2.applyColorMap(
+        cam1_color = cv2.applyColorMap(
             np.uint8(cam1 * 255),
             cmap_dict[colormap_name],
         )
 
-        cam1 = cv2.cvtColor(
-            cam1,
+        cam1_color = cv2.cvtColor(
+            cam1_color,
             cv2.COLOR_BGR2RGB,
         )
 
-        cam1 = np.uint8(
-            cam_alpha * cam1
+        cam1_overlay = np.uint8(
+            cam_alpha * cam1_color
             + (1 - cam_alpha)
             * np.array(img.resize((224, 224)))
         )
@@ -166,11 +182,8 @@ if file is not None:
         with col1:
             st.subheader("Top‑1 Grad‑CAM")
             st.image(
-                cam1,
-                caption=(
-                    f"{label_map[top1]} "
-                    f"({probs[top1] * 100:.2f}%)"
-                ),
+                cam1_overlay,
+                caption=label_map[top1],
                 width="stretch",
             )
 
@@ -183,18 +196,18 @@ if file is not None:
                 target_layer,
             )
 
-            cam2 = cv2.applyColorMap(
+            cam2_color = cv2.applyColorMap(
                 np.uint8(cam2 * 255),
                 cmap_dict[colormap_name],
             )
 
-            cam2 = cv2.cvtColor(
-                cam2,
+            cam2_color = cv2.cvtColor(
+                cam2_color,
                 cv2.COLOR_BGR2RGB,
             )
 
-            cam2 = np.uint8(
-                cam_alpha * cam2
+            cam2_overlay = np.uint8(
+                cam_alpha * cam2_color
                 + (1 - cam_alpha)
                 * np.array(img.resize((224, 224)))
             )
@@ -202,17 +215,36 @@ if file is not None:
             with col2:
                 st.subheader("Runner‑up Grad‑CAM")
                 st.image(
-                    cam2,
-                    caption=(
-                        f"{label_map[top2]} "
-                        f"({probs[top2] * 100:.2f}%)"
-                    ),
+                    cam2_overlay,
+                    caption=label_map[top2],
                     width="stretch",
                 )
 
+            # --------------------------------------------------
+            # CAM OVERLAP METRIC (NEW)
+            # --------------------------------------------------
+            cam1_bin = cam1 > 0.5
+            cam2_bin = cam2 > 0.5
+
+            overlap_score = (
+                np.sum(cam1_bin & cam2_bin)
+                / (np.sum(cam1_bin) + 1e-8)
+            )
+
+            st.metric(
+                "Grad‑CAM Overlap Score",
+                f"{overlap_score:.2f}",
+            )
+
+            if overlap_score > 0.5:
+                st.warning(
+                    "High overlap between Top‑1 and Runner‑up "
+                    "indicates class ambiguity."
+                )
+
         st.download_button(
-            label="Download Top‑1 Grad‑CAM",
-            data=cam1.tobytes(),
+            "Download Top‑1 Grad‑CAM",
+            data=cam1_overlay.tobytes(),
             file_name="gradcam_top1.png",
             mime="image/png",
         )
@@ -222,24 +254,20 @@ if file is not None:
     # ------------------------------------------------------
     predictions_text = {
         "nv": (
-            "Smooth, round lesion with uniform brown color. "
-            "If it resembled melanoma, irregular borders or "
-            "varied pigmentation would be highlighted."
+            "Smooth, symmetric lesion with uniform pigmentation. "
+            "Melanoma would show irregular borders and color variation."
         ),
         "mel": (
-            "Irregular dark areas with uneven edges. "
-            "A benign nevus would show more symmetric and "
-            "consistent coloring."
+            "Irregular pigmentation and asymmetric regions. "
+            "Benign lesions typically lack such heterogeneity."
         ),
         "bkl": (
-            "Rough texture or scaly appearance. "
-            "Melanoma would typically activate multi‑tone "
-            "pigmentation regions."
+            "Keratinized or scaly texture. "
+            "Melanoma would emphasize color irregularity instead."
         ),
         "df": (
-            "Small, firm nodule with limited pigmentation. "
-            "Melanoma would show dispersed and asymmetric "
-            "highlighted regions."
+            "Firm nodule with limited pigment spread. "
+            "Malignant lesions show broader activation patterns."
         ),
     }
 
@@ -249,16 +277,7 @@ if file is not None:
         if compare_runnerup:
             st.markdown(
                 f"**Why not {label_map[top2]}?**  \n"
-                "The runner‑up class shows partial feature overlap "
-                "but lacks the dominant discriminative regions "
-                "required for confident diagnosis."
+                "Although visually similar, the runner‑up lacks "
+                "dominant discriminative regions required for "
+                "confident diagnosis."
             )
-
-    # ------------------------------------------------------
-    # LOW CONFIDENCE WARNING
-    # ------------------------------------------------------
-    if probs[top1] < 0.5:
-        st.warning(
-            "Low confidence prediction. Visual features overlap "
-            "between multiple disease classes."
-        )
