@@ -98,7 +98,7 @@ if file is not None:
     st.image(
         img,
         caption="Uploaded Image",
-        use_column_width=True,
+        width="stretch",
     )
 
     x = transform(img).unsqueeze(0).to(device)
@@ -171,7 +171,7 @@ if file is not None:
                     f"{label_map[top1]} "
                     f"({probs[top1] * 100:.2f}%)"
                 ),
-                use_column_width=True,
+                width="stretch",
             )
 
         # ---------- RUNNER‑UP ----------
@@ -207,7 +207,7 @@ if file is not None:
                         f"{label_map[top2]} "
                         f"({probs[top2] * 100:.2f}%)"
                     ),
-                    use_column_width=True,
+                    width="stretch",
                 )
 
         st.download_button(
