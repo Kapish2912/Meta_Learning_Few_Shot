@@ -113,7 +113,7 @@ for i in range(6):
     plt.title(f"Real: {le.inverse_transform([labels[i].cpu()])[0]} \nPred: {le.inverse_transform([preds[i].cpu()])[0]}")
     plt.axis("off")
 plt.tight_layout()
-plt.savefig("outputs/sample_predictions.png")
+plt.savefig("outputs/week_b_analysis/confusion_matrix_v1.png")
 plt.close()
 
 print("Evaluation complete. Results saved in outputs folder.")
