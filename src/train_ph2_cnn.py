@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 from torchvision import transforms
 import torch.optim as optim
 import torch.nn as nn
@@ -11,35 +11,24 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
 
-from src.dataset_loader import HAMDataset, CLASS_NAMES
+from src.dataset_loader import PH2Dataset
 from src.baseline_cnn import SimpleCNN
 
 
-# --------------------------------------------------
-# Device (CPU-only is fine)
-# --------------------------------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
+# --------------------------------------------------
+# Paths
+# --------------------------------------------------
+PH2_ROOT = "data/PH2"
+PH2_LABELS = "data/PH2_dataset.xlsx"
 
 # --------------------------------------------------
-# Load metadata
-# --------------------------------------------------
-meta = pd.read_csv("data/HAM10000_metadata.csv")
-
-train_df, test_df = train_test_split(
-    meta,
-    test_size=0.2,
-    stratify=meta["dx"],
-    random_state=42,
-)
-
-
-# --------------------------------------------------
-# Transforms (CPU-safe)
+# Transforms
 # --------------------------------------------------
 transform = transforms.Compose([
-    transforms.Resize((160, 160)),
+    transforms.Resize((224, 224)),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(
@@ -48,72 +37,59 @@ transform = transforms.Compose([
     ),
 ])
 
-
 # --------------------------------------------------
-# Datasets
+# Dataset
 # --------------------------------------------------
-train_data = HAMDataset(train_df, "data/images", transform)
-test_data = HAMDataset(test_df, "data/images", transform)
-
-
-# --------------------------------------------------
-# Class-balanced sampling (IMPORTANT)
-# --------------------------------------------------
-train_labels = [label for _, label in train_data]
-class_counts = np.bincount(train_labels)
-class_weights = 1.0 / class_counts
-sample_weights = [class_weights[label] for label in train_labels]
-
-sampler = WeightedRandomSampler(
-    sample_weights,
-    num_samples=len(sample_weights),
-    replacement=True,
+dataset = PH2Dataset(
+    ph2_root=PH2_ROOT,
+    labels_path=PH2_LABELS,
+    transform=transform,
 )
 
+labels = [dataset[i][1] for i in range(len(dataset))]
 
-# --------------------------------------------------
-# DataLoaders
-# --------------------------------------------------
+train_idx, test_idx = train_test_split(
+    np.arange(len(labels)),
+    test_size=0.2,
+    stratify=labels,
+    random_state=42,
+)
+
+train_data = torch.utils.data.Subset(dataset, train_idx)
+test_data = torch.utils.data.Subset(dataset, test_idx)
+
 train_loader = DataLoader(
     train_data,
-    batch_size=4,
-    sampler=sampler,
+    batch_size=8,
+    shuffle=True,
     num_workers=0,
 )
 
 test_loader = DataLoader(
     test_data,
-    batch_size=4,
+    batch_size=8,
     shuffle=False,
     num_workers=0,
 )
 
-
 # --------------------------------------------------
-# Model (EfficientNet-B0, partial fine-tuning)
+# Model
 # --------------------------------------------------
 model = SimpleCNN(num_classes=2).to(device)
 
-criterion = nn.CrossEntropyLoss(
-    weight=torch.tensor([1.0, 3.5]).to(device)
-)
-
-optimizer = optim.Adam(
-    filter(lambda p: p.requires_grad, model.parameters()),
-    lr=3e-4,
-)
-
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
 # --------------------------------------------------
 # Training
 # --------------------------------------------------
-EPOCHS = 8
+EPOCHS = 6
 train_acc = []
 
 for epoch in range(EPOCHS):
     print(f"\n🚀 Starting Epoch {epoch+1}/{EPOCHS}")
-
     model.train()
+
     correct, total = 0, 0
 
     for images, labels in train_loader:
@@ -130,34 +106,22 @@ for epoch in range(EPOCHS):
         total += labels.size(0)
         correct += (preds == labels).sum().item()
 
-    accuracy = 100.0 * correct / total
-    train_acc.append(accuracy)
-
-    print(
-        f"✅ Epoch [{epoch+1}/{EPOCHS}] "
-        f"Training Accuracy: {accuracy:.2f}%"
-    )
-
+    acc = 100 * correct / total
+    train_acc.append(acc)
+    print(f"✅ Epoch [{epoch+1}/{EPOCHS}] Training Accuracy: {acc:.2f}%")
 
 # --------------------------------------------------
 # Save model
 # --------------------------------------------------
-torch.save(model.state_dict(), "outputs/model_weights.pth")
+torch.save(model.state_dict(), "outputs/ph2_model_weights.pth")
 
-
-# --------------------------------------------------
-# Accuracy plot
-# --------------------------------------------------
 plt.plot(train_acc, label="Training Accuracy")
 plt.xlabel("Epoch")
 plt.ylabel("Accuracy (%)")
 plt.legend()
 plt.tight_layout()
-plt.savefig("outputs/accuracy_plot.png")
+plt.savefig("outputs/ph2_accuracy_plot.png")
 plt.close()
-
-print("Training complete. Accuracy plot saved.")
-
 
 # --------------------------------------------------
 # Evaluation
@@ -174,35 +138,31 @@ with torch.no_grad():
         y_true.extend(labels.cpu().numpy())
         y_pred.extend(preds.cpu().numpy())
 
-print("\n=== Classification Report (Binary CNN) ===")
+print("\n=== PH2 Classification Report ===")
 print(
     classification_report(
         y_true,
         y_pred,
-        target_names=CLASS_NAMES,
+        target_names=["Benign", "Malignant"],
     )
 )
 
-
-# --------------------------------------------------
-# Confusion Matrix
-# --------------------------------------------------
 cm = confusion_matrix(y_true, y_pred)
 
-plt.figure(figsize=(6, 5))
+plt.figure(figsize=(5, 4))
 sns.heatmap(
     cm,
     annot=True,
     fmt="d",
     cmap="Blues",
-    xticklabels=CLASS_NAMES,
-    yticklabels=CLASS_NAMES,
+    xticklabels=["Benign", "Malignant"],
+    yticklabels=["Benign", "Malignant"],
 )
-plt.title("Confusion Matrix - Binary CNN")
+plt.title("PH2 Confusion Matrix")
 plt.xlabel("Predicted")
 plt.ylabel("Actual")
 plt.tight_layout()
-plt.savefig("outputs/confusion_matrix.png")
+plt.savefig("outputs/ph2_confusion_matrix.png")
 plt.close()
 
-print("Evaluation complete. Results saved.")
+print("PH2 training and evaluation complete.")
