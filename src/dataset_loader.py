@@ -118,3 +118,9 @@ class PH2Dataset(Dataset):
             image = self.transform(image)
 
         return image, label
+    
+    def map_binary_label(dx):
+        if dx in ["mel", "bcc", "akiec"]:
+            return 1  # Malignant
+        else:
+            return 0  # Benign

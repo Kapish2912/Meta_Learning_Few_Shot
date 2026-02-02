@@ -2,32 +2,39 @@ import random, os
 from torch.utils.data import Dataset
 
 # Your sampler used by the Prototypical Network
-class FewShotDataset(Dataset):
-    """
-    Creates N‑way K‑shot episodes from a dataframe (image_id, dx)
-    """
-    def __init__(self, df, img_dir,
-                 n_way=4, k_shot=5, q_query=5, transform=None):
-        self.df = df
+class FewShotDataset:
+    def __init__(self, meta, img_dir, n_way, k_shot, q_query, transform):
+        self.meta = meta
         self.img_dir = img_dir
-        self.transform = transform
-        self.n_way = n_way
         self.k_shot = k_shot
         self.q_query = q_query
-        self.classes = list(df['dx'].unique())
-        self.class_to_images = {
-            c: df[df['dx'] == c]['image_id'].tolist() for c in self.classes
-        }
+        self.transform = transform
+
+        self.benign = meta[~meta["dx"].isin(["mel", "bcc", "akiec"])]
+        self.malignant = meta[meta["dx"].isin(["mel", "bcc", "akiec"])]
 
     def create_episode(self):
-        """Return support and query lists for one episode"""
-        chosen_classes = random.sample(self.classes, self.n_way)
         support, query = [], []
-        for c in chosen_classes:
-            imgs = random.sample(self.class_to_images[c],
-                                 self.k_shot + self.q_query)
-            support += [(i, c) for i in imgs[:self.k_shot]]
-            query  += [(i, c) for i in imgs[self.k_shot:]]
+
+        benign_support = self.benign.sample(self.k_shot)
+        malignant_support = self.malignant.sample(self.k_shot)
+
+        benign_query = self.benign.sample(self.q_query)
+        malignant_query = self.malignant.sample(self.q_query)
+
+        for _, row in benign_support.iterrows():
+            support.append((row["image_id"], row["dx"]))
+        for _, row in malignant_support.iterrows():
+            support.append((row["image_id"], row["dx"]))
+
+        for _, row in benign_query.iterrows():
+            query.append((row["image_id"], row["dx"]))
+        for _, row in malignant_query.iterrows():
+            query.append((row["image_id"], row["dx"]))
+
+        random.shuffle(support)
+        random.shuffle(query)
+
         return support, query
 
     def __len__(self):
