@@ -1,48 +1,40 @@
+# src/dataset_loader.py
+
+# src/dataset_loader.py
+
 import os
-import pandas as pd
-from PIL import Image
+import torch
 from torch.utils.data import Dataset
+from PIL import Image
 
-
-# --------------------------------------------------
-# HAM10000 DATASET (Binary)
-# --------------------------------------------------
-
-BENIGN_CLASSES = ["nv", "bkl", "df", "vasc"]
-MALIGNANT_CLASSES = ["mel", "bcc", "akiec"]
-
-LABEL_MAP = {cls: 0 for cls in BENIGN_CLASSES}
-LABEL_MAP.update({cls: 1 for cls in MALIGNANT_CLASSES})
-
-CLASS_NAMES = ["Benign", "Malignant"]
+CLASS_NAMES = ["benign", "malignant"]
 
 
 class HAMDataset(Dataset):
-    def __init__(self, data, img_dir, transform=None):
-        if isinstance(data, str):
-            self.data = pd.read_csv(data)
-        else:
-            self.data = data.reset_index(drop=True)
-
-        self.img_dir = img_dir
+    def __init__(self, dataframe, image_dir, transform=None):
+        self.df = dataframe.reset_index(drop=True)
+        self.image_dir = image_dir
         self.transform = transform
 
     def __len__(self):
-        return len(self.data)
+        return len(self.df)
 
     def __getitem__(self, idx):
-        row = self.data.iloc[idx]
-        image_id = row["image_id"]
-        label_str = row["dx"]
+        row = self.df.iloc[idx]
 
-        img_path = os.path.join(self.img_dir, f"{image_id}.jpg")
-        image = Image.open(img_path).convert("RGB")
-        label = LABEL_MAP[label_str]
+        image_id = row["image_id"]
+        dx = row["dx"]
+
+        image_path = os.path.join(self.image_dir, image_id + ".jpg")
+        image = Image.open(image_path).convert("RGB")
+
+        # ✅ Binary labels
+        label = 0 if dx in ["nv", "bkl"] else 1
 
         if self.transform:
             image = self.transform(image)
 
-        return image, label
+        return image, torch.tensor(label, dtype=torch.long)
 
 
 # --------------------------------------------------

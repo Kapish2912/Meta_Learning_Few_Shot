@@ -21,11 +21,13 @@ os.makedirs(save_dir, exist_ok=True)
 # -------------------------------------------------------
 # LOAD MODEL
 # -------------------------------------------------------
-model = SimpleCNN(num_classes=4).to(device)
-model.load_state_dict(torch.load("outputs/model_weights.pth", map_location=device))
+model = SimpleCNN(num_classes=2).to(device)
+model.load_state_dict(
+    torch.load("outputs/ph2_model_weights.pth", map_location=device)
+)
 model.eval()
 
-target_layer = model.conv2
+target_layer = model.model.layer4[-1].conv2
 
 # -------------------------------------------------------
 # IMAGE PREPROCESSING
