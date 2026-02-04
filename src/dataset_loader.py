@@ -116,3 +116,33 @@ class PH2Dataset(Dataset):
             return 1  # Malignant
         else:
             return 0  # Benign
+        
+import os
+import torch
+from PIL import Image
+
+
+def load_fewshot_batch(df, image_dir, transform, device):
+    images = []
+    labels = []
+
+    for _, row in df.iterrows():
+        img_path = os.path.join(image_dir, row["image_id"] + ".jpg")
+        img = Image.open(img_path).convert("RGB")
+
+        if transform:
+            img = transform(img)
+
+        # ✅ FIXED GLOBAL LABELS
+        if row["dx"] in ["nv", "bkl"]:
+            label = 0  # benign
+        else:
+            label = 1  # malignant
+
+        images.append(img)
+        labels.append(label)
+
+    return (
+        torch.stack(images).to(device),
+        torch.tensor(labels, dtype=torch.long).to(device),
+    )
